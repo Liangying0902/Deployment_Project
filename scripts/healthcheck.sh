@@ -1,4 +1,7 @@
 #!/usr/bin/env bash
+export IMAGE_TAG="$TAG" FORCE_UNHEALTHY=false
+export DOCKERHUB_USER="${DOCKERHUB_USER:-wkin}"
+
 URL="${1:?usage: healthcheck.sh <url> [expected_version]}"
 EXPECTED="${2:-}"
 for i in $(seq 1 10); do

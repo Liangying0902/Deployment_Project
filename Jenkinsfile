@@ -12,10 +12,8 @@ pipeline {
   environment {
     DOCKERHUB_USER = 'wkin'
     IMAGE          = "${DOCKERHUB_USER}/tasktrack"
-    // Production server login and public IP, e.g. azureuser@20.x.x.x
-    PROD_HOST      = '[Filled by Kio]'
-    // Same IP with http://, e.g. http://20.x.x.x
-    PROD_URL       = '[Filled by Kio]'
+    PROD_HOST = 'taskadmin@85.211.195.131'
+    PROD_URL  = 'http://85.211.195.131'
   }
   stages {
     stage('Checkout') {
@@ -28,16 +26,16 @@ pipeline {
       }
     }
     stage('Install and Lint') {
-      agent { docker { image 'node:20-alpine'; reuseNode true } }
+      agent { docker { image 'node:22'; reuseNode true } }
       steps {
         sh 'npm ci'
-        sh 'npm run lint'          // script by [Filled by Chan]
+        sh 'npm run lint'
       }
     }
     stage('Unit Tests') {
-      agent { docker { image 'node:20-alpine'; reuseNode true } }
+      agent { docker { image 'node:22'; reuseNode true } }
       steps {
-        sh 'npm test -- --ci --coverage'   // tests and 80% threshold by [Filled by Chan]
+        sh 'npm test -- --ci --coverage'
       }
       post {
         always { junit allowEmptyResults: true, testResults: 'junit.xml' }
@@ -46,7 +44,6 @@ pipeline {
     stage('Docker Build and Push Tag') {
       steps {
         sh 'docker build -t $IMAGE:$TAG .'
-        // Credential ID 'dockerhub-creds' is added in Jenkins by [Filled by Pua]
         withCredentials([usernamePassword(credentialsId: 'dockerhub-creds',
                          usernameVariable: 'U', passwordVariable: 'P')]) {
           sh 'echo "$P" | docker login -u "$U" --password-stdin'
@@ -55,7 +52,6 @@ pipeline {
       }
     }
     stage('Deploy to Test') {
-      // Agent label 'test' is set up by [Filled by Pua]
       agent { label 'test' }
       steps {
         sh '''
@@ -70,19 +66,13 @@ pipeline {
       agent { label 'test' }
       steps {
         sh 'npm ci'
-        sh 'BASE_URL=http://localhost:3000 npm run test:integration'   // tests by [Filled by Wong]
+        sh 'BASE_URL=http://localhost:3000 npm run test:integration'
         sh 'curl -fsS http://localhost:3000/ > /dev/null'
-      }
-    }
-    stage('Push latest') {
-      steps {
-        sh 'docker tag $IMAGE:$TAG $IMAGE:latest && docker push $IMAGE:latest'
       }
     }
     stage('Deploy to Production') {
       steps {
         script { env.PROD_TOUCHED = 'true' }
-        // Credential ID 'prod-ssh-key' is added in Jenkins by [Filled by Pua]
         sshagent(['prod-ssh-key']) {
           sh """
             scp -o StrictHostKeyChecking=accept-new docker-compose.yml scripts/*.sh $PROD_HOST:/opt/tasktrack/
@@ -95,12 +85,26 @@ pipeline {
       steps {
         sh 'bash scripts/healthcheck.sh $PROD_URL/health $TAG'
         sshagent(['prod-ssh-key']) {
-          sh 'ssh $PROD_HOST "echo $TAG > /opt/tasktrack/last_good_tag"'
+          // "cat >" runs on the production server, so the file is saved there
+          sh 'echo "$TAG" | ssh $PROD_HOST "cat > /opt/tasktrack/last_good_tag"'
+        }
+      }
+    }
+    stage('Push latest') {
+      // Moved here: only a healthy production build becomes "latest"
+      steps {
+        withCredentials([usernamePassword(credentialsId: 'dockerhub-creds',
+                         usernameVariable: 'U', passwordVariable: 'P')]) {
+          sh 'echo "$P" | docker login -u "$U" --password-stdin'
+          sh 'docker tag $IMAGE:$TAG $IMAGE:latest && docker push $IMAGE:latest'
         }
       }
     }
   }
   post {
+    always {
+      sh 'docker logout || true'
+    }
     failure {
       script {
         if (env.PROD_TOUCHED == 'true') {
@@ -112,7 +116,7 @@ pipeline {
       echo 'Build failed. Check the stage view.'
     }
     success {
-      echo "Deployed $TAG to production"
+      echo "Deployed ${env.TAG} to production"
     }
   }
 }

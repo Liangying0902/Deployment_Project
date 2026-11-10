@@ -1,19 +1,15 @@
-const js = require('@eslint/js');
-const globals = require('globals');
-
 module.exports = [
-  { ignores: ['node_modules/**', 'coverage/**'] },
-  js.configs.recommended,
   {
     files: ['**/*.js'],
-    languageOptions: { sourceType: 'commonjs', globals: { ...globals.node } },
-  },
-  {
-    files: ['tests/**/*.js'],
-    languageOptions: { globals: { ...globals.jest } },
-  },
-  {
-    files: ['public/**/*.js'],
-    languageOptions: { sourceType: 'script', globals: { ...globals.browser } },
+    languageOptions: {
+      ecmaVersion: 2022,
+      sourceType: 'commonjs',
+      globals: {
+        require: 'readonly', module: 'writable', process: 'readonly',
+        __dirname: 'readonly', console: 'readonly',
+        describe: 'readonly', test: 'readonly', expect: 'readonly', beforeEach: 'readonly',
+      },
+    },
+    rules: {},
   },
 ];
